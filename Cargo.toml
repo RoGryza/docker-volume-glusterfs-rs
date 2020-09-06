@@ -1,0 +1,15 @@
+[package]
+authors = ["Rodrigo Gryzinski <rogryza@rogryza.com>"]
+edition = "2018"
+name = "docker-volume-glusterfs-rs"
+version = "0.1.0"
+
+[dependencies]
+async-std = {version = "^1", features = ["attributes"]}
+env_logger = "^0.7"
+hyper = "^0.13"
+log = "^0.4"
+quick-error = "^2"
+serde = {version = "^1", features = ["derive"]}
+serde-xml-rs = "^0.4"
+serde_repr = "^0.1"
