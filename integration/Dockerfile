@@ -1,1 +1,0 @@
-from gluster/gluster-centos
