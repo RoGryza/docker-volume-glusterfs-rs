@@ -13,5 +13,4 @@ log = "^0.4"
 quick-error = "^2"
 serde = {version = "^1", features = ["derive"]}
 serde-xml-rs = "^0.4"
-serde_repr = "^0.1"
 tokio = {version = "^0.2", features = ["full"]}

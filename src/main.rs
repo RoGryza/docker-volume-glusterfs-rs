@@ -1,3 +1,4 @@
+// TODO create error type
 mod gluster_cli;
 mod plugin;
 mod util;
