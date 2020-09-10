@@ -41,26 +41,22 @@ pub async fn info() -> Result<Info, String> {
     }
 }
 
-pub async fn create(
-    name: &str,
-    replica: u32,
-    bricks: &[(&str, &str)],
-    force: bool,
-) -> Result<VolumeId, String> {
+pub async fn create(host: &str, name: &str, bricks: &[(&str, String)]) -> Result<VolumeId, String> {
     let mut cmd = Command::new("gluster");
     cmd.arg("--mode=script")
         .arg("--xml")
+        .arg(format!("--remote-host={}", host))
         .arg("volume")
         .arg("create")
-        .arg(name)
-        .arg("replica")
-        .arg(replica.to_string());
+        .arg(name);
+
+    if bricks.len() > 1 {
+        cmd.arg("replica").arg(bricks.len().to_string());
+    }
     for (host, path) in bricks {
         cmd.arg(format!("{}:{}", host, path));
     }
-    if force {
-        cmd.arg("force");
-    }
+    cmd.arg("force");
 
     let output = cmd.output().map_err(|e| e.to_string())?;
     if output.status.success() {
@@ -71,7 +67,12 @@ pub async fn create(
             serde_xml_rs::from_reader(Cursor::new(output.stdout)).map_err(|e| e.to_string())?;
         Ok(Volume::try_from(resp)?.id)
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
+        Err(format!(
+            "Gluster cli error ({}): {}\n{}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout).to_string(),
+            String::from_utf8_lossy(&output.stderr).to_string()
+        ))
     }
 }
 

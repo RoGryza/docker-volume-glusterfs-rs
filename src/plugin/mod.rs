@@ -1,4 +1,5 @@
 use std::convert::Infallible;
+use std::error::Error;
 use std::fs;
 use std::path::Path;
 
@@ -6,28 +7,93 @@ use futures::prelude::*;
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyperlocal::UnixServerExt;
-use log::warn;
+use log::{error, info, warn};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use tokio::io::{stream_reader, AsyncReadExt};
 use tokio::signal::unix::{signal, SignalKind};
 
-async fn service(req: Request<Body>) -> Result<Response<Body>, Infallible> {
+use crate::gluster_cli;
+
+pub type Result<T> = std::result::Result<T, Box<dyn Error + Sync + Send + 'static>>;
+
+async fn service(req: Request<Body>) -> Result<Response<Body>> {
     let mut response = Response::new(Body::empty());
     if req.method() != Method::POST {
         *response.status_mut() = StatusCode::METHOD_NOT_ALLOWED;
         return Ok(response);
     }
-    let body = match req.uri().path() {
-        "/Plugin.Activate" => r#"{"Implements": ["VolumeDriver"]}"#.into(),
-        "/VolumeDriver.Capabilities" => r#"{"Capabilities": {"Scope": "global"}}"#.into(),
+    let path = req.uri().path().to_string();
+    let body_result: Result<Body> = match path.as_str() {
+        "/Plugin.Activate" => Ok(r#"{"Implements": ["VolumeDriver"]}"#.into()),
+        "/VolumeDriver.Capabilities" => Ok(r#"{"Capabilities": {"Scope": "global"}}"#.into()),
+        "/VolumeDriver.Create" => serde_request(create, req).await,
+        "/VolumeDriver.Remove" => Err("NIY".into()),
+        "/VolumeDriver.Mount" => Err("NIY".into()),
+        "/VolumeDriver.Unmount" => Err("NIY".into()),
+        "/VolumeDriver.Path" => Err("NIY".into()),
+        "/VolumeDriver.List" => Err("NIY".into()),
         _ => {
             *response.status_mut() = StatusCode::NOT_FOUND;
-            "Not found".into()
+            *response.body_mut() = "Not found".into();
+            return Ok(response);
         }
     };
-    *response.body_mut() = body;
+    *response.body_mut() = match body_result {
+        Ok(body) => {
+            info!("{}: OK", path);
+            body
+        }
+        Err(e) => {
+            error!("{}: {}", path, e);
+            let mut msg = e.to_string();
+            if msg.is_empty() {
+                msg = "Unknown error".to_string();
+            }
+            format!(r#"{{"Err": "{}"}}"#, msg.escape_default()).into()
+        }
+    };
     Ok(response)
 }
 
-pub async fn run_server<P>(socket: P) -> Result<(), hyper::Error>
+async fn serde_request<F, G, T, U>(f: F, req: Request<Body>) -> Result<Body>
+where
+    F: FnOnce(T) -> G,
+    G: Future<Output = Result<U>>,
+    T: DeserializeOwned,
+    U: Serialize,
+{
+    let mut req_body = Vec::new();
+    stream_reader(
+        req.into_body()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+    )
+    .read_to_end(&mut req_body)
+    .await?;
+    let req_data = serde_json::from_slice(&req_body)?;
+    let resp_data = f(req_data).await?;
+    let resp_bytes = serde_json::to_vec(&resp_data)?;
+    Ok(resp_bytes.into())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct VolumeCreateRequest {
+    name: String,
+    opts: Options,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct Options {}
+
+async fn create(req: VolumeCreateRequest) -> Result<()> {
+    let servers = [("gluster-server", format!("/mnt/{}", req.name))];
+    gluster_cli::volume::create("localhost", &req.name, &servers).await?;
+    Ok(())
+}
+
+pub async fn run_server<P>(socket: P) -> Result<()>
 where
     P: AsRef<Path>,
 {
@@ -55,5 +121,5 @@ where
         }
     }
 
-    result
+    result.map_err(|e| e.into())
 }
