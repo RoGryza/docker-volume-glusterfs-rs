@@ -1,8 +1,7 @@
 // TODO create error type
-mod gluster_cli;
+mod heketi;
 mod plugin;
 mod util;
-mod xml;
 
 use log::error;
 
@@ -12,7 +11,11 @@ async fn main() {
         env_logger::Env::new().default_filter_or("docker_volume_glusterfs_rs=INFO"),
     )
     .init();
-    if let Err(e) = plugin::run_server("glusterfs.sock").await {
+
+    let client = heketi::Client::new("http://localhost:8080".into(), "admin".into())
+        .expect("Failed to connect to client");
+
+    if let Err(e) = plugin::run_server("glusterfs.sock", client).await {
         error!("{}", e);
     }
 }
