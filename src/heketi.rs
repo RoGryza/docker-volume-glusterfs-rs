@@ -43,6 +43,12 @@ impl Display for VolumeId {
     }
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct Volume {
+    pub id: VolumeId,
+    pub name: String,
+}
+
 #[derive(Serialize)]
 struct Claims<'a> {
     iss: &'a str,
@@ -100,6 +106,20 @@ impl Client {
             .expect("TODO ASPDJASLKDJ");
         let volumes: Volumes = serde_json::from_slice(&resp_body).expect("KAKAAKKA");
         Ok(volumes.volumes)
+    }
+
+    pub async fn get_volume(&self, id: &VolumeId) -> Result<Volume, hyper::Error> {
+        let mut resp_body = Vec::new();
+        self.get(&format!("/volumes/{}", id))
+            .await?
+            .body_mut()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            .into_async_read()
+            .read_to_end(&mut resp_body)
+            .await
+            .expect("TODO ERROSSSDAD");
+        let volume = serde_json::from_slice(&resp_body).expect("SERDE");
+        Ok(volume)
     }
 
     pub async fn delete_volume(&self, id: &VolumeId) -> Result<(), hyper::Error> {

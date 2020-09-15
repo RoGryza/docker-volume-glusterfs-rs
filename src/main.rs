@@ -15,7 +15,7 @@ async fn main() {
     let client = heketi::Client::new("http://localhost:8080".into(), "admin".into())
         .expect("Failed to connect to client");
 
-    if let Err(e) = plugin::run_server("glusterfs.sock", client).await {
+    if let Err(e) = plugin::run_server("glusterfs.sock", "glusterfs.db", client).await {
         error!("{}", e);
     }
 }
